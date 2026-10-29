@@ -1,0 +1,19 @@
+# pip install -r requirements.txt   (in the logger's conda environment, Python 3.9 or newer)
+# PyJEM is not on PyPI: it comes pre-installed on the TEM PC (or from JEOL) and is installed into
+# the environment separately, see README.md "Environment".
+numpy
+
+# The BRIO webcam through Windows (pywinrt; Windows only, Python 3.9+). The winrt-Windows.* packages
+# are the namespaces brio_camera.py touches. Optional: without them the logger looks for the camera
+# server (python -m utem_logger --camera-server) instead.
+winrt-runtime; sys_platform == "win32"
+winrt-Windows.Foundation; sys_platform == "win32"
+winrt-Windows.Foundation.Collections; sys_platform == "win32"
+winrt-Windows.Devices.Enumeration; sys_platform == "win32"
+winrt-Windows.Media; sys_platform == "win32"
+winrt-Windows.Media.Capture; sys_platform == "win32"
+winrt-Windows.Media.Capture.Frames; sys_platform == "win32"
+winrt-Windows.Media.Devices; sys_platform == "win32"
+winrt-Windows.Media.MediaProperties; sys_platform == "win32"
+winrt-Windows.Graphics.Imaging; sys_platform == "win32"
+winrt-Windows.Storage.Streams; sys_platform == "win32"

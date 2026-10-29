@@ -1,0 +1,14 @@
+# conda env create -f environment.yml      -> environment "utem-logger"
+# Then install PyJEM into it (not on PyPI; the tarball JEOL ships with the TEM PC, the one used for vjem38):
+#     conda activate utem-logger
+#     pip install PyJEM-1.1.0.2305.tar.gz
+# PyJEM lists Python 3.9 and 3.10 as supported, pywinrt (the BRIO) needs 3.9+, so 3.10 is the common ground.
+name: utem-logger
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy
+  - pip
+  - pip:
+      - -r requirements.txt

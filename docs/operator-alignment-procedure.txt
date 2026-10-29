@@ -1,0 +1,21 @@
+UTEM calibration procedure:
+turn on the beam, see a spot.
+alignment is done from the top of the microscope to the bottom.
+
+Illumination alignment:(everything here at minimum X40K magnification
+
+spot 1 to spot 5: change spot# setting between 1 and 5. in spot 1 do gun alignment (XY control, in spot 5 change XY deflection to recenter. back and forth until spot center stays in place between 1 and 5.
+
+shift and tilt: gun tilt to maximize current at working spot (usually 3)
+
+column tilt: HT wobbler - looks like iris opening and closing off center of beam. XY control until it looks like it opens and closes around the center.
+
+currently manual: open and close condenser aperture, move the aperture around until it is in the center of the beam.
+
+Imaging:
+
+move to diffraction mode and move to parallel beam with the condenser. change diffraction focus to sharpen the spot and then use some camera distance magnification.
+two wobbler corrections. Diffraction mode to fix tilt until beam stops wobbling. Imaging(mag) mode to correct shift. two knobs for each.
+
+Astigmatism:
+fixed through condenser by changing brightness (L3 condenser focus).

@@ -1,0 +1,24 @@
+{
+  "_comment": "Copy to config.json next to this file and edit. Anything left out keeps its default (utem_logger/config.py).",
+  "log_root": "\\\\NAS-NAME\\share\\data\\logs",
+  "_log_root": "the UNC path of the NAS works before log-on and in any session; a drive letter (Z:/data/logs) only once the drive is mapped",
+  "poll_interval_s": 1.0,
+  "heartbeat_s": 300,
+  "min_free_gb": 20,
+  "camera": {
+    "kind": "brio",
+    "format": "rgb8",
+    "brio": {
+      "settings_file": "camera_settings.json",
+      "in_process": "auto",
+      "port": 47615
+    },
+    "release_after_s": 120,
+    "_comment": "kind: brio (settings in camera_settings.json, see camera_settings.example.json), thorlabs, or mock"
+  },
+  "dm_view": {
+    "enabled": true,
+    "port": 47614,
+    "_comment": "the Orius live View through dm_helper/utem_view_server.py running inside DM"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "_comment": "Copy to camera_settings.json. Written by: python -m utem_logger --camera-dump (after setting the camera up in brio_gui.py). Edit by hand too: a control is {\"auto\": bool, \"value\": n} or a bare number (manual at that value). Controls not listed are left as the camera has them. min/max/step/default are what the camera reported at the dump, for reference.",
+  "camera": "BRIO",
+  "format": "1920x1080 @ 5 fps  MJPG",
+  "controls": {
+    "exposure": {"auto": false, "value": -6, "min": -11, "max": -2, "step": 1, "default": -5},
+    "focus": {"auto": false, "value": 0, "min": 0, "max": 255, "step": 5, "default": 0},
+    "white_balance": {"auto": false, "value": 4000, "min": 2000, "max": 7500, "step": 10, "default": 4000},
+    "brightness": {"auto": null, "value": 128, "min": 0, "max": 255, "step": 1, "default": 128},
+    "contrast": 128,
+    "backlight_compensation": 0
+  }
+}
