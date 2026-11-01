@@ -1,11 +1,11 @@
-"""The loop: poll the state every second, record what changed, and grab a frame on every change:
-from the screen camera while the gun is thermionic (beam switch on), from the Orius live View in
-DM while it is not (photoemission) and someone has a View running. Also one frame when the beam
-switch goes on, and one when a View becomes live.
+"""The loop: poll the state every configured interval, record what changed, and grab a frame on every change:
+from the screen camera while the beam is on, not blanked and the screen is down, from the Orius live
+View in DM while the beam is not blanked, the screen is up and DM's View is running (config "frames").
+Also one frame when a source's conditions start to hold, and one when a View becomes live.
 
-Per poll (default 1 s): one PyJEM read (about 70 Get* calls), a comparison, and nothing else unless
+Per poll (default 30 s): one PyJEM read (26 fast getters plus up to 5 rotating getters), a comparison, and nothing else unless
 something changed. A frame costs one camera exposure and one PNG compression (~0.15 s of one core for a
-full 1440 x 1080 16-bit colour frame at png_level 1). Changes inside one poll make one record and
+full 1440 x 1080 16-bit colour frame at png_level 1). Changes between observations make one record and
 one frame.
 
 Record types in state.jsonl (every line has "t", local time with UTC offset, and "event"):
@@ -49,6 +49,9 @@ def differs(a, b, tol):
     if tol and isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
         return any(differs(x, y, tol) for x, y in zip(a, b))
     if tol and isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        if isinstance(tol, dict):    # relative with a floor: {"rel": 0.05, "min": 1.0}
+            limit = max(tol.get("rel", 0.0) * max(abs(a), abs(b)), tol.get("min", 0.0))
+            return abs(a - b) > limit
         return abs(a - b) > tol
     return a != b
 
@@ -78,6 +81,8 @@ class Logger:
         pj = cfg["pyjem"]
         self.readings = set(pj["readings"])
         self.tol = pj["tolerance"]
+        self.derived = [(k, v[:v.index("[")], int(v[v.index("[") + 1:-1])) for k, v in pj.get("derived", {}).items()]
+        self.warned = set()
         self.state = None            # last recorded state
         self.state_t = None          # time of the line that recorded it
         self.available = None
@@ -101,7 +106,7 @@ class Logger:
 
     @camera.setter
     def camera(self, cam):
-        self._set_source("screen", cam, self.cfg["camera"], "frames", lambda s: self.thermionic(s))
+        self._set_source("screen", cam, self.cfg["camera"], "frames", lambda s: self.frame_ok("screen", s))
 
     @property
     def dm_camera(self):
@@ -109,7 +114,7 @@ class Logger:
 
     @dm_camera.setter
     def dm_camera(self, cam):
-        self._set_source("dm_view", cam, self.cfg["dm_view"], "frames_dm", lambda s: not self.thermionic(s))
+        self._set_source("dm_view", cam, self.cfg["dm_view"], "frames_dm", lambda s: self.frame_ok("dm_view", s))
 
     # ---- records
     def record(self, event, t=None, **fields):
@@ -133,6 +138,28 @@ class Logger:
         th = self.cfg["thermionic"]
         return s.get(th["beam_switch"]) == 1
 
+    def frame_ok(self, name, s):
+        """Every condition of cfg["frames"][name] holds; a getter without a value does not block."""
+        for key, allowed in self.cfg["frames"].get(name, {}).items():
+            if allowed is None or key.startswith("_"):     # null in config.json drops a default condition
+                continue
+            v = s.get(key)
+            if v is None:
+                if key not in self.warned:
+                    self.warned.add(key)
+                    log.warning("%s frames: condition on %s ignored, this getter has no value", name, key)
+                continue
+            if v not in (allowed if isinstance(allowed, list) else [allowed]):
+                return False
+        return True
+
+    def derive(self, s):
+        """Add the derived keys (elements of tuple readings tracked as settings)."""
+        for key, getter, i in self.derived:
+            v = s.get(getter)
+            s[key] = v[i] if isinstance(v, list) and len(v) > i else None
+        return s
+
     # ---- one poll
     def poll(self):
         mono = time.monotonic()
@@ -144,11 +171,13 @@ class Logger:
             if self.available is not False:
                 self.status("pyjem_unavailable", error=str(e)[:300], retry_s=self.cfg["pyjem"]["retry_s"])
             self.available = False
-            self.next_pyjem_try = mono + self.cfg["pyjem"]["retry_s"]
+            self.next_pyjem_try = time.monotonic() + self.cfg["pyjem"]["retry_s"]
             return
         t = now()
+        mono = time.monotonic()  # acquisition may have taken seconds; use its completion time
         self.n_polls += 1
         self.poll_ms.append(ms)
+        s = self.derive(s)
         if self.available is False:
             self.status("pyjem_available")
         self.available = True

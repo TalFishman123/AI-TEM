@@ -11,7 +11,11 @@ PROBE = {   # values from probes/pyjem/pyjem_probe_online_2026-10-13_17-50-21.js
     "HT3.GetHtValue": 200000.0, "GUN3.GetBeamSw": 0, "GUN3.GetFilamentVal": 2.342,
     "GUN3.GetEmissionCurrentValue": 0.0, "GUN3.GetFilamentCurrentValue": 0.0,
     "GUN3.GetAnode2CurrentValue": 0.03, "EOS3.GetFunctionMode": [2, "LOWMAG"],
-    "EOS3.GetMagValue": [150, "X", "X150"], "EOS3.GetSpotSize": 0, "Def3.GetBeamBlank": 1,
+    "EOS3.GetMagValue": [150, "X", "X150"], "EOS3.GetSpotSize": 0,
+    "Def3.GetBeamBlank": 0, "Detector3.GetScreen": 0,     # probe: blanked; here unblanked, screen down, so frames happen
+    "Camera3.GetCurrentDensity": 12.0,
+    "VACUUM3.GetColumnReady": 1, "VACUUM3.GetSpecimenReady": 1, "VACUUM3.GetPegInfo(0)": [3100, 3],
+    "GUN3.GetHtCurrentValue": [200000, 0, 3, 3, 0, 0, 1016, 0], "GUN3.GetHtTargetValue": [200000, 0, 0, 0, 2342, 0],
     "Def3.GetCLA1": [31892, 30880], "Def3.GetCLA2": [36934, 41391], "Def3.GetCLs": [35800, 41392],
     "Def3.GetGunA2": [27724, 38472], "Def3.GetShifBal": [17856, 17664], "Def3.GetTiltBal": [20812, 20776],
     "Def3.GetPLA": [32364, 32864], "Lens3.GetCL3": 48146, "Lens3.GetOLf": 0,
@@ -37,9 +41,12 @@ class MockSource:
             raise Unavailable("mock TEMCenter not answering")
         if r.random() < self.p_beam:
             s["GUN3.GetBeamSw"] ^= 1
+        if r.random() < self.p_beam:
+            s["Def3.GetBeamBlank"] ^= 1
         on = s["GUN3.GetBeamSw"] == 1
         s["GUN3.GetEmissionCurrentValue"] = round((95.0 if on else 0.0) + r.gauss(0, 0.5), 2)
         s["GUN3.GetFilamentCurrentValue"] = round((2.3 if on else 0.0) + r.gauss(0, 0.01), 3)
+        s["Camera3.GetCurrentDensity"] = round((12.0 if on else 0.0) * (1 + r.gauss(0, 0.01)), 2)   # noise under tolerance
         s["Stage3.GetPos"][0] = round(26903.64 + r.gauss(0, 2), 2)        # jitter under tolerance
         if not self.burst and r.random() < self.p_burst:
             self.burst = r.randint(2, 6)                                 # an operator turns a knob

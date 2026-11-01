@@ -1,0 +1,37 @@
+UTEM LOGGER REPAIRS — 2026-10-29
+
+This directory contains the repaired logger. Use its files to update the instrument installation.
+Example: AI-TEM/utem-logger/ contains config.json and the utem_logger/ and dm_helper/ folders.
+
+1. Back up your existing utem-logger folder. Stop the state logger and BRIO server.
+   Stop the currently running helper script in DM. Do not start additional logger copies.
+2. Copy the changed files into the existing utem-logger folder, preserving the directory structure.
+   Keep your local config.json and camera_settings.json; set poll_interval_s = 30.0 in config.json.
+   config.example.json supplies generic defaults for a new installation.
+3. Copy dm_helper/utem_view_server.py to the location DM actually runs it from (the plugin
+   directory when using the launcher). Reopen the Python file in DM; an old script window
+   retains the previously loaded code. Expected helper version: 0.4.2.
+4. If using an installed startup script, replace/reinstall that installed launcher too.
+   Install ONE of utem_view_server_launch.s and utem_view_server_startup.s, never both.
+   The startup filename now uses the same delayed threaded implementation as the launcher.
+   For the first hardware check, a manual start of the Python helper is simpler.
+5. Keep the existing vjem38 and utem-logger environments; do not reinstall PyJEM.
+6. During an idle instrument period, start TEMCenter and DM normally, then the helper,
+   then your existing start_utem_logger.bat (not included in this repository). Check logger.log for every 30.0 s.
+7. Collect at least 10 minutes of logger.log and DM Output; record beep times for comparison.
+   See dm_helper/CHECKS.md for expected behavior and limitations.
+
+Local verification: Regression tests cover the repaired behavior, including a real local TCP request
+with a mocked DM interface. No instrument was connected. From the installed folder run:
+    python -m unittest discover -s tests -p test_repairs.py -v
+
+Timeouts retain the active worker; no second read or connection is launched while it is active.
+Late state is discarded, and retry time starts at failure completion. The failing
+VACUUM3.GetSpecimenPreEvacStart getter is temporarily excluded.
+
+A permanently stuck native call cannot be forcibly stopped by Python threads. Shutdown may
+remain pending. Inspect the logger process before any restart; do not launch repeated copies.
+These repairs do not establish or guarantee removal of the beep source.
+
+State is sampled at 30-second intervals, with change-triggered recording/frames and a 5-minute
+heartbeat. The slower 63 getters rotate across 13 polls (~6.5 min), not every 30 seconds.

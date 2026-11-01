@@ -2,7 +2,7 @@
   "_comment": "Copy to config.json next to this file and edit. Anything left out keeps its default (utem_logger/config.py).",
   "log_root": "\\\\NAS-NAME\\share\\data\\logs",
   "_log_root": "the UNC path of the NAS works before log-on and in any session; a drive letter (Z:/data/logs) only once the drive is mapped",
-  "poll_interval_s": 1.0,
+  "poll_interval_s": 30.0,
   "heartbeat_s": 300,
   "min_free_gb": 20,
   "camera": {
