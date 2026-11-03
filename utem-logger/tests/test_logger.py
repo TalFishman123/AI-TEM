@@ -231,8 +231,16 @@ class FakeDM:
             return FakeDM._Tags(self._tags)
 
     def ExecuteScriptString(self, code):
-        assert "CountImageDocuments" in code
-        self.tags["utem_view_server:images"] = "".join(f"{i}\t{n}\n" for i, (n, _, _) in self.images.items())
+        if "CountImageDocuments" in code:
+            self.tags["utem_view_server:count"] = len(self.images)
+            for index, (image_id, (name, _, _)) in enumerate(self.images.items()):
+                self.tags[f"utem_view_server:img{index}:id"] = image_id
+                self.tags[f"utem_view_server:img{index}:name"] = name
+        elif "GetApplicationVersion" in code:
+            for key, value in zip(("major", "minor", "bug"), (3, 44, 3448)):
+                self.tags["utem_view_server:gms_" + key] = value
+        else:
+            raise AssertionError("Unexpected DM script")
 
     def GetPersistentTagGroup(self):
         return FakeDM._Tags(self.tags)
@@ -256,17 +264,37 @@ class TestDMView(Base):
         import threading
         import types
         cls.dm = FakeDM()
+        cls.previous_dm = sys.modules.get("DigitalMicrograph")
+        cls.previous_autostart = os.environ.get("UTEM_VIEW_SERVER_NO_AUTOSTART")
         sys.modules["DigitalMicrograph"] = cls.dm
         os.environ["UTEM_VIEW_SERVER_NO_AUTOSTART"] = "1"
         spec = importlib.util.spec_from_file_location(
             "utem_view_server", pathlib.Path(__file__).resolve().parents[1] / "dm_helper" / "utem_view_server.py")
         cls.srv = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.srv)
-        cls.srv.PORT, cls.srv.LIVE_S, cls.srv.SAMPLE_S = cls.PORT, 0.5, 0.05
-        threading.Thread(target=cls.srv.sample_loop, daemon=True).start()
-        threading.Thread(target=cls.srv.serve, daemon=True).start()
-        import time
-        time.sleep(0.3)
+        cls.srv.PORT, cls.srv.COPY_S, cls.srv.QUIET_START = 0, 0, True
+        ready = threading.Event()
+        cls.srv._log = lambda msg: ready.set() if msg.startswith("listening") else None
+        cls.server_thread = threading.Thread(target=cls.srv.serve, daemon=True)
+        cls.server_thread.start()
+        if not ready.wait(2):
+            raise RuntimeError("DM test server did not start")
+        cls.PORT = cls.srv._run["socket"].getsockname()[1]
+
+    @classmethod
+    def tearDownClass(cls):
+        import os
+        cls.srv._run["stop"] = True
+        cls.srv._run["socket"].close()
+        cls.server_thread.join(3)
+        if cls.previous_dm is None:
+            sys.modules.pop("DigitalMicrograph", None)
+        else:
+            sys.modules["DigitalMicrograph"] = cls.previous_dm
+        if cls.previous_autostart is None:
+            os.environ.pop("UTEM_VIEW_SERVER_NO_AUTOSTART", None)
+        else:
+            os.environ["UTEM_VIEW_SERVER_NO_AUTOSTART"] = cls.previous_autostart
 
     def setUp(self):
         super().setUp()
@@ -280,40 +308,40 @@ class TestDMView(Base):
         self.dm.images[7] = ("Orius SC200 View", arr, {"Acquisition:Parameters:High Level:Exposure (s)": 0.1,
                                                       "Acquisition:Parameters:High Level:Binning": 4,
                                                       "Acquisition:Device:Name": "Orius"})
-        import time
-        time.sleep(0.15)                                 # let the helper's sampler see it
 
-    def test_photoemission_frames_from_dm_view(self):
+    def test_dm_frames_follow_screen_position_and_open_view(self):
         from utem_logger.camera import DMViewCamera
-        import time
-        off = state()                                    # beam switch off: photoemission
-        lg = Logger(self.cfg, Scripted([off, state(Def3__GetCLA1=[1, 1]), state(Def3__GetCLA1=[2, 2]),
-                                        state(Def3__GetCLA1=[3, 3]), state(GUN3__GetBeamSw=1, Def3__GetCLA1=[4, 4])]))
+        up = {"Detector3__GetScreen": 2}
+        lg = Logger(self.cfg, Scripted([
+            state(**up), state(**up, Def3__GetCLA1=[1, 1]),
+            state(**up, Def3__GetCLA1=[2, 2]), state(**up, Def3__GetCLA1=[3, 3]),
+            state(GUN3__GetBeamSw=1, Detector3__GetScreen=0, Def3__GetCLA1=[4, 4])]))
         lg.dm_camera = DMViewCamera(self.cfg["dm_view"])
         lg.store.check()
-        lg.poll()                                        # no View open: nothing, quietly
+        lg.poll()  # no image open
         self.new_frame()
-        lg.poll()                                        # change + live view -> frame
-        time.sleep(0.7)                                  # view stops (no new frame for > LIVE_S)
-        lg.poll()                                        # change, view not live -> no frame
+        lg.poll()
+        lg.poll()  # stopped View is still open; its unchanged image remains available
         self.new_frame()
-        lg.poll()                                        # live again -> frame
-        lg.poll()                                        # beam on: the DM source is off
+        lg.poll()
+        lg.poll()  # screen down: no DM frame
         recs = self.records()
-        self.assertEqual([(r["event"], r.get("source")) for r in recs],
-                         [("start", None), ("change", None), ("frame", "dm_view"), ("change", None),
-                          ("change", None), ("frame", "dm_view"), ("change", None)])
-        fr = recs[2]
+        frames = [r for r in recs if r["event"] == "frame"]
+        self.assertEqual(len(frames), 3)
+        self.assertTrue(frames[1]["meta"]["same_as_last"])
+        self.assertFalse(frames[2]["meta"]["same_as_last"])
+        fr = frames[0]
         self.assertTrue(fr["file"].startswith("frames_dm/"))
         self.assertEqual(fr["meta"]["dm_binning"], 4.0)
-        img, _ = decode_png(self.root / "2026" / fr["t"][:7] / fr["t"][:10] / fr["file"])
+        day = self.root / fr["t"][:4] / fr["t"][:7] / fr["t"][:10]
+        img, _ = decode_png(day / fr["file"])
         self.assertEqual((img.shape, img.dtype), ((512, 512), np.uint16))
-        self.assertGreater(int(img[256, 256]), 1500)      # the disc, in counts
-        self.assertEqual(png.read_text(self.root / "2026" / fr["t"][:7] / fr["t"][:10] / fr["file"])["utem_source"], "dm_view")
+        self.assertGreater(int(img[256, 256]), 1500)
+        self.assertEqual(png.read_text(day / fr["file"])["utem_source"], "dm_view")
 
     def test_view_becoming_live_owes_a_frame(self):
         from utem_logger.camera import DMViewCamera
-        lg = Logger(self.cfg, Scripted([state(), state(), state()]))
+        lg = Logger(self.cfg, Scripted([state(Detector3__GetScreen=2)] * 3))
         lg.dm_camera = DMViewCamera(self.cfg["dm_view"])
         lg.store.check()
         lg.poll()                                        # start, no view
@@ -325,7 +353,7 @@ class TestDMView(Base):
     def test_helper_missing_is_one_status_line(self):
         from utem_logger.camera import DMViewCamera
         self.cfg["dm_view"]["port"] = 1                  # nothing listens there
-        lg = Logger(self.cfg, Scripted([state(), state(Def3__GetCLA1=[1, 1]), state(Def3__GetCLA1=[2, 2])]))
+        lg = Logger(self.cfg, Scripted([state(Detector3__GetScreen=2), state(Detector3__GetScreen=2, Def3__GetCLA1=[1, 1]), state(Detector3__GetScreen=2, Def3__GetCLA1=[2, 2])]))
         lg.dm_camera = DMViewCamera(self.cfg["dm_view"])
         lg.store.check()
         for _ in range(3):
@@ -497,3 +525,4 @@ class TestMockRun(Base):
 
 if __name__ == "__main__":
     unittest.main()
+

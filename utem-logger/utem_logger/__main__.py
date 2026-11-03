@@ -129,13 +129,21 @@ def main(argv=None):
         return 0
 
     if a.once:
+        # the first read connects and reads every getter; the second is an ordinary poll
         try:
-            state, errors, ms = timed_read(source)
+            full, errors, connect_ms = timed_read(source)
+            part, errors2, ms = timed_read(source)
         except Unavailable as e:
             print("PyJEM unavailable:", e)
             return 1
-        print(json.dumps({"poll_ms": round(ms, 1), "state": state, "errors": errors}, indent=1))
-        source.close()
+        finally:
+            source.close()
+        by_time = sorted(getattr(source, "getter_ms", {}).items(), key=lambda kv: -kv[1])
+        print(json.dumps({"poll_ms": round(ms, 1), "poll_getters": len(part),
+                          "connect_and_full_read_ms": round(connect_ms, 1),
+                          "getter_ms": {k: round(v, 1) for k, v in by_time},     # slowest first
+                          "state": {**full, **{k: v for k, v in part.items() if v is not None}},
+                          "errors": {**errors, **errors2}}, indent=1))
         return 0
 
     try:

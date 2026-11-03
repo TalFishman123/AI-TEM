@@ -10,7 +10,7 @@ when it is busy the logger skips frames and tries again later.
 
 ``DMViewCamera`` is the Gatan Orius as DigitalMicrograph shows it: it asks the helper running inside
 DM's Python (``dm_helper/utem_view_server.py``) for a copy of the live View image. Nothing is acquired,
-so the operator's view is never interrupted; when no View is live there is no frame (``NotLive``).
+so the operator's view is never interrupted; when no View window is open there is no frame (``NotLive``).
 """
 from __future__ import annotations
 
@@ -253,7 +253,7 @@ class DMViewCamera:
             return h, data
 
     def live(self):
-        """Is a View running in DM right now? False too when DM or the helper is not there."""
+        """Is a View window open in DM right now? False too when DM or the helper is not there."""
         try:
             return bool(self._ask("probe", self.cfg["timeout_s"])[0].get("live"))
         except OSError:
@@ -262,9 +262,10 @@ class DMViewCamera:
     def grab(self):
         h, data = self._ask("grab", self.cfg["timeout_s"])
         if not h.get("live"):
-            raise NotLive(h.get("note") or "View image %r unchanged for %.0f s" % (h.get("name"), h.get("age_s", 0)))
+            raise NotLive(h.get("note") or "no View window named %r" % h.get("name"))
         arr = np.frombuffer(data, dtype=np.dtype(h["dtype"]).newbyteorder("<")).reshape(h["shape"])
-        meta = {"camera": "DM view", "dm_image": h.get("name"), "dm_dtype": h["dtype"], "age_s": h.get("age_s"),
+        meta = {"camera": "DM view", "dm_image": h.get("name"), "dm_dtype": h["dtype"],
+                "same_as_last": h.get("same_as_last"),      # sampled statistics match the previous grab; not proof of freshness
                 "sensor_shape": list(arr.shape), "raw_mean": round(float(arr.mean()), 2),
                 "raw_max": round(float(arr.max()), 1), **{"dm_" + k: v for k, v in h.get("tags", {}).items()}}
         # DM view images are usually float32 after gain normalisation; the counts fit 16 bits

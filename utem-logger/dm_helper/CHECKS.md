@@ -1,39 +1,36 @@
-# Checks to run in DM, once, with a live View running
+# UTEM checks after repairs — 2026-10-29
 
-Three scripts, each a minute. Run each from DM's script window (File > Open, pick the language shown,
-Execute) with the View window in front, and copy the Output window text into the project thread.
+Use the logger's 30-second configuration. The supplied helper is 0.4.2, BLOCKING=True.
 
-| Script | Language | What it decides |
-|---|---|---|
-| `check_frame_listener.py` | Python | Option 1: does a data-changed listener fire on every new frame? Then the helper records the last frame's time directly instead of sampling pixels. |
-| `check_view_tags.s` | DM-script | Option 2: does the View image carry a per-frame counter or timestamp in its tags? It prints the whole tag tree twice; anything that ticks between the prints is usable. |
-| `check_python_thread.py` | Python | Whether the helper's background thread can call DM. If not, set `BLOCKING = True` in `utem_view_server.py`. |
+## Before instrument validation
 
-What is verified and what is not:
+1. Preserve the installed files and stop the state logger and its camera server.
+2. Stop the old helper in DM. Replace the Python helper and reopen its script window;
+   a previously open window retains its loaded source. Install only one startup launcher.
+3. Start TEMCenter and DM normally, then the helper and logger. Do this during an agreed idle
+   instrument period, not during a sensitive acquisition. Do not change microscope settings
+   simply to reproduce a failure.
+4. Save logger.log and DM Output, and record wall-clock times of any audible beeps.
 
-- The listener API in `check_frame_listener.py` (`DM.Py_ScriptObject`, `HandleDataChangedEvent`,
-  `ImageHandleDataChangedEvent`) is taken from Gatan's own published Python examples
-  ([Live Simple Copy.py](https://www.gatan.com/sites/default/files/Scripts/Live%20Simple%20Copy.py),
-  [Live Radial Profile.py](https://www.gatan.com/sites/default/files/Scripts/Live%20Radial%20Profile.py)),
-  which update a copy of the live image on every frame this way. Gatan warns there that GMS 3.5.0 and
-  3.5.1 crash on listeners; the script checks the version first.
-- No tag names of the live View image were verified against Gatan documentation (none is public),
-  which is why `check_view_tags.s` prints every tag instead of looking for guessed names. The tag
-  names the helper reads for exposure and binning (`Acquisition:Parameters:High Level:...`) are also
-  unverified: the printed tree shows the real ones, and `TAG_KEYS` in `utem_view_server.py` is
-  edited to match.
-- The DM-script tag-iteration calls in `check_view_tags.s` and the thread behaviour tested by
-  `check_python_thread.py` are from memory of the DM-script and GMS Python APIs, not from documentation.
-  A wrong name there fails at compile time with a clear message, not silently.
+## Read-only observations
 
-Two facts from Gatan's "Run a Python script" page that matter for the helper: only one Python script
-can run in DM at a time (so the helper must return and keep working from its background thread and
-listeners, as Gatan's own live examples do; `BLOCKING = True` would stop anyone else running Python in
-DM), and scripts run on a background thread by default (the checkbox at the bottom of the script
-window), which is what the helper expects.
+- Confirm logger.log says every 30.0 s and the helper reports version 0.4.2.
+- Check --dm-status only when no extra state logger process is being started: the command queries
+  the helper, not PyJEM. Expected live=true means the Orius window is open, even if stopped.
+- If PyJEM times out, look for keeping worker; no reconnect. Further retries must not produce
+  additional connection messages while the previous call is still active.
+- A completed late read must be discarded, followed by a fresh observation on a later retry.
+- Collect at least 10 minutes of logs to cover more than two of the historical ~245-second cycles.
+- Check the NAS state.jsonl and frame metadata for actual state/frame output. Slow rotating getters
+  are not refreshed every 30 seconds; their full rotation takes about 6.5 minutes.
 
-Also useful, from the logger's side once the helper runs: `python -m utem_logger --dm-status --config config.json`
-lists the images DM has open (to set `VIEW_NAME` if the View window is not called `...View...`).
+## Do not use obsolete diagnostic scripts for this validation
 
-Until these are done the helper uses pixel sampling to tell whether the View is live, which needs none
-of the above.
+check_frame_listener.py is historical. The supplied helper records that a data-changed listener
+crashed this instrument's GMS 3.4.4; do not run that check in this workflow.
+check_python_thread.py also makes DM calls from a background Python thread, contrary to the current
+helper's default. It is not required for these repairs. Tag inspection is separate from this patch.
+
+No result from the simulator proves microscope compatibility or identifies the sound source.
+If a native call stays blocked forever, thread shutdown cannot interrupt it; inspect the logger
+process rather than starting repeated copies.
